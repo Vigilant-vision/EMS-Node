@@ -11,11 +11,9 @@ const taskSchema = new Schema(
         },
         projectId: {
             type: Schema.Types.ObjectId,
-            // required: true
         },
         taskDetails: {
             type: String,
-            // required: true
         },
         assignedBy: {
             type: Schema.Types.ObjectId,    // Reference to the Admin model
@@ -27,6 +25,12 @@ const taskSchema = new Schema(
             enum: ['Not Started', 'Completed', 'In Progress'],
             default: 'Not Started' // Set default status to 'Pending'
         },
+        comments: [
+            {
+                text: { type: String, required: true },  // Comment text
+                createdAt: { type: Date, default: Date.now },  // Timestamp
+            }
+        ]
     },
     {
         timestamps: true,
@@ -35,6 +39,5 @@ const taskSchema = new Schema(
 
 taskSchema.plugin(mongoosePaginate);
 const Task = mongoose.model('Task', taskSchema);
-
 
 module.exports = Task;

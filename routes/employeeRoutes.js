@@ -6,9 +6,12 @@ const {
     employeeLogin,
     getInvitationNamAndEmail,
     addOrUpdateEmployeeDetails,
-    getTaskForemployee,
+    getTaskForEmployee,
     updateTaskByIdemployee,
     employeeLogout,
+    getTaskSummary,
+    getTaskList,
+    accessibleDocuments
     
 } = require("../controllers/employeeController");
 const verifyToken = require("../middlewares/verifyToken");
@@ -22,7 +25,12 @@ router.post('/logout',verifyToken, employeeLogout);
 
 //Protected routes
 router.post('/add-details', verifyToken, upload.single('image'), addOrUpdateEmployeeDetails);
-router.get('/task-details', verifyToken, getTaskForemployee);
+router.get('/task-details', verifyToken, getTaskForEmployee);
 router.put('/employee-task/:id', verifyToken,updateTaskByIdemployee);
+
+router.get('/task-summary', verifyToken, getTaskSummary);
+router.get('/task-list', verifyToken, getTaskList);
+router.get('/accessible-documents', verifyToken, accessibleDocuments);
+
 
 module.exports = router;

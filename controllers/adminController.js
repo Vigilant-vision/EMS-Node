@@ -12,6 +12,8 @@ const { generateAccessToken, generateRefreshToken } = require("../utils/generate
 const { verifyRefreshToken } = require("../utils/verifyRefreshToken");
 const { RefreshToken } = require("../models/refreshTokenModel");
 const LoginLogout = require('../models/Loginlogout');
+const Document = require('../models/document');
+const { default: mongoose } = require('mongoose');
 
 const createAdmins = async () => {
     try {
@@ -105,7 +107,7 @@ const adminLogin = async (req, res) => {
             success: true,
             admin: others,
             message: "Admin login successful",
-            jwtToken: accessToken,
+            accessToken: accessToken
             // refreshToken: refreshToken,
         });
     } catch (error) {
@@ -1081,6 +1083,85 @@ const employeeusagetime = async (req, res) => {
     res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };
+const uploadFile = async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).send({
+                success: false,
+                message: 'No file uploaded or incorrect file format.',
+            });
+        }
+
+        const { accessibleEmployees, documentTitle } = req.body; // Get data from request body
+        const adminId = req.id;
+
+        // Parse accessibleEmployees to ensure it's an array
+        let parsedEmployees = JSON.parse(accessibleEmployees);
+
+        // If accessibleEmployees is an array of arrays, flatten it
+        if (Array.isArray(parsedEmployees) && Array.isArray(parsedEmployees[0])) {
+            parsedEmployees = parsedEmployees.flat();  // Flatten the nested array
+        }
+
+        // Ensure accessibleEmployees is a flat array
+        if (!Array.isArray(parsedEmployees)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid accessibleEmployees format. Expected an array.',
+            });
+        }
+
+        // Check if the user is an admin
+        const admin = await Admin.findById(adminId);
+        if (!admin) {
+            return res.status(400).send({
+                success: false,
+                message: 'Not Admin',
+            });
+        }
+
+        const file = req.file; // The uploaded file
+        if (!file.filename || !file.mimetype || !file.path) {
+            return res.status(400).send({
+                success: false,
+                message: 'File information is incomplete.',
+            });
+        }
+
+        // Save the file to the database (Document model)
+        const filePath = `/uploads/${file.filename}`; // Adjust the path as needed
+
+        const newDocument = new Document({
+            filename: file.filename,
+            fileType: file.mimetype,
+            filePath,
+            uploadedBy: adminId,
+            accessibleBy: parsedEmployees, // Store parsed employees (flat array)
+            documentTitle,
+        });
+
+        await newDocument.save();
+
+        res.status(200).json({
+            success: true,
+            message: 'File uploaded successfully!',
+            document: newDocument,
+        });
+    } catch (error) {
+        console.error('Error uploading file:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message,
+        });
+    }
+};
+
+  
+  
+  
+  
+  
+
 
 module.exports = {
     createAdmins,
@@ -1103,6 +1184,7 @@ module.exports = {
     deleteTaskById,
     getLoggedInEmployeeDetails,
     employeeloginlogoutData,
-    employeeusagetime
+    employeeusagetime,
+    uploadFile
 };
 

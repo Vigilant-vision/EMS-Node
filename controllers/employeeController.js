@@ -8,6 +8,10 @@ const Task = require('../models/taskModel');
 const { employeeRegisterSchema, validateLoginForEmployee, detailsValidationSchema } = require("../validations/employeeValidation");
 const { generateAccessToken } = require("../utils/generateToken");
 const LoginLogout = require('../models/Loginlogout');
+const { successResponse, errorResponse } = require('../utils/apiResponse');
+const { Admin } = require('../models/adminModel');
+const { Project } = require('../models/projectModel');
+const Document = require('../models/document');
 
 //POST: Accept invitation from admin and employee register
 const getInvitationNamAndEmail = async (req, res) => {
@@ -492,88 +496,251 @@ const getEmployeeByInvtationId = async (req, res) => {
     }
 };
 // Controller to get a single task by ID
-const getTaskForemployee = async (req, res) => {
+const getTaskForEmployee = async (req, res) => {
     try {
         // Get the employee id from the request
         const employeeId = req.id;
-        
+
         // Check if the employee exists
         const employee = await Employee.findById(employeeId);
         if (!employee) {
-            return res.status(400).send({
-                success: false,
-                message: 'Employee not found'
-            });
+            return errorResponse(res, 'Employee not found', null, 400);
         }
-      
-        // Find tasks assigned to the employee
-        const tasks = await Task.find({ employeeId });
 
-        if (!tasks || tasks.length === 0) {
-            return res.status(404).json({ message: 'Tasks not found' });
+        // Get status filter from the query parameters
+        const { status } = req.query;
+
+        // Build the query object dynamically
+        const query = { employeeId };
+        if (status && status !== 'all') {
+            query.status = status; // Add status filter only if it's not 'all'
         }
-        
-        // Process tasks to include the name of the admin who assigned them
-        const processedTasks = [];
-        for (const task of tasks) {
-            let processedTask = { ...task.toObject() }; // Create a new object to avoid reassigning a constant
-            try {
-                const admin = await Admin.findById(task.assignedBy);
-                if (admin) {
-                    processedTask.assignee = admin.name;
-                } else {
+
+        // Find tasks based on the query
+        const tasks = await Task.find(query);
+        if (!tasks || tasks.length === 0) {
+            return errorResponse(res, 'No tasks found', null, 404);
+        }
+
+        // Process tasks to include admin name and project details
+        const processedTasks = await Promise.all(
+            tasks.map(async (task) => {
+                const processedTask = { ...task.toObject() }; // Create a new object to avoid reassigning a constant
+                try {
+                    const admin = await Admin.findById(task.assignedBy);
+                    processedTask.assignee = admin ? admin.name : 'Unknown';
+
+                    // Format the assigned date
+                    processedTask.createdAt = new Date(processedTask.createdAt)
+                        .toISOString()
+                        .split('T')[0];
+
+                    // Fetch the project details
+                    const project = await Project.findById(task.projectId);
+                    processedTask.projectName = project ? project.projectName : 'Unknown';
+                } catch (error) {
+                    console.error('Error finding admin or project:', error);
                     processedTask.assignee = 'Unknown';
-                }
-                // Format the assigned date
-                processedTask.createdAt = new Date(processedTask.createdAt).toISOString().split('T')[0];
-                
-                // Fetch the project details
-                const project = await Project.findById(task.projectId);
-                if (project) {
-                    processedTask.projectName = project.projectName;
-                } else {
                     processedTask.projectName = 'Unknown';
                 }
-            } catch (error) {
-                console.error('Error finding admin or project:', error);
-                processedTask.assignee = 'Unknown';
-                processedTask.projectName = 'Unknown';
-            }
-            processedTasks.push(processedTask);
-        }
+                return processedTask;
+            })
+        );
 
-        res.status(200).json(processedTasks);
+        // Send success response
+        return successResponse(res, 'Tasks fetched successfully', processedTasks);
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error('Error fetching tasks:', error);
+        return errorResponse(res, 'Internal server error', error.message);
     }
 };
 
+
 const updateTaskByIdemployee = async (req, res) => {
     try {
-        // Get the admin id from jwt token
-        const UserId = req.id;
-        // Check if the user is an admin
-        const employee = await Employee.findById(UserId);
+        // Get the employee ID from the JWT token
+        const userId = req.id;
+
+        // Check if the user is an employee
+        const employee = await Employee.findById(userId);
         if (!employee) {
             return res.status(400).send({
                 success: false,
-                message: 'Not Employee'
+                message: 'Not an Employee'
             });
         }
 
-        const { status } = req.body;
+        const { status, comment } = req.body;
 
-        const updatedTask = await Task.findByIdAndUpdate(req.params.id, { status }, { new: true });
+        // Find the task by ID and update the status and comments
+        const updatedTask = await Task.findByIdAndUpdate(
+            req.params.id,
+            {
+                $set: { status }, // Update the status
+                $push: {
+                    comments: { text: comment }, // Add a new comment
+                }
+            },
+            { new: true }
+        );
 
         if (!updatedTask) {
             return res.status(404).json({ message: 'Task not found' });
         }
 
-        res.status(200).json(updatedTask);
+        res.status(200).json({
+            success: true,
+            message: 'Task updated successfully',
+            task: updatedTask
+        });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({
+            success: false,
+            message: error.message,
+        });
     }
 };
+
+const getTaskSummary = async (req, res) => {
+    try {
+        const employeeId = req.id;
+
+        const employee = await Employee.findById(employeeId);
+        if (!employee) {
+            return errorResponse(res, 'Employee not found', null, 400);
+        }
+
+        const tasks = await Task.find({ employeeId });
+
+        const totalTasks = tasks.length;
+        const completedTasks = tasks.filter(task => task.status === 'Completed').length;
+        const pendingTasks = tasks.filter(task => task.status === 'Pending').length;
+        const performance = totalTasks > 0
+            ? ((completedTasks / totalTasks) * 100).toFixed(2)
+            : 0;
+
+        return successResponse(res, 'Task summary fetched successfully', {
+            totalTasks,
+            completedTasks,
+            pendingTasks,
+            performance: `${performance}%`,
+        });
+    } catch (error) {
+        return errorResponse(res, 'Failed to fetch task summary', error.message);
+    }
+};
+
+
+const getTaskList = async (req, res) => {
+    try {
+        // Get the employee ID from the request
+        const employeeId = req.id;
+
+        // Check if the employee exists
+        const employee = await Employee.findById(employeeId);
+        if (!employee) {
+            return errorResponse(res, 'Employee not found', null, 404);
+        }
+
+        // Fetch the top 3 tasks for the employee, sorted by severity and creation date
+        const tasks = await Task.find({ employeeId })
+            .sort({ severity: -1, createdAt: -1 }) // Sort by severity (highest first) and then by creation date
+            .limit(3);
+
+        if (!tasks || tasks.length === 0) {
+            return errorResponse(res, 'No tasks found', null, 404);
+        }
+
+        // Map over tasks to include admin name
+        const taskList = await Promise.all(
+            tasks.map(async (task) => {
+                let adminName = 'Unknown';
+                if (task.assignedBy) {
+                    const admin = await Admin.findById(task.assignedBy);
+                    adminName = admin ? admin.name : 'Unknown';
+                }
+
+                return {
+                    taskId: task._id,
+                    taskDetails: task.taskDetails,
+                    assignedBy: adminName,
+                    status: task.status,
+                    date: new Date(task.createdAt).toISOString().split('T')[0], // Format the date
+                };
+            })
+        );
+
+        return successResponse(res, 'Task list fetched successfully', taskList);
+    } catch (error) {
+        return errorResponse(res, 'Failed to fetch task list', error.message, 500);
+    }
+};
+
+const accessibleDocuments = async (req, res) => {
+    try {
+        // Extract user ID from the request (populated by authentication middleware)
+        const employeeId = req.id;
+
+        // Find the employee by their ID
+        const employee = await Employee.findById(employeeId);
+        if (!employee) {
+            return res.status(400).json({
+                success: false,
+                message: 'Employee not found',
+            });
+        }
+
+        // Find documents accessible by the user
+        const accessibleDocuments = await Document.find({
+            accessibleBy: { $elemMatch: { $in: [employeeId] } },
+        });
+
+        console.log("employeeId", employeeId);
+        console.log("accessibleDocuments", accessibleDocuments);
+
+        // Handle the case where no documents are found
+        if (accessibleDocuments.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'No accessible documents found.',
+            });
+        }
+
+        // Base URL of the server (adjust as needed)
+        const serverBaseUrl = `${req.protocol}://${req.get('host')}`;
+
+        // Fetch the admin's name for each document and include the full file path
+        const documentsWithDetails = await Promise.all(
+            accessibleDocuments.map(async (doc) => {
+                // Fetch the admin details using the uploadedBy field
+                const admin = await Admin.findById(doc.uploadedBy);
+
+                // Construct the full file path for downloading
+                const fullFilePath = `${serverBaseUrl}${doc.filePath}`;
+
+                // Add the admin's name and full file path to the document
+                return {
+                    ...doc.toObject(),
+                    uploadedBy: admin ? admin.name : null,  // Admin's name or null if not found
+                    downloadUrl: fullFilePath,             // Full file path for download
+                };
+            })
+        );
+
+        // Return the documents with admin names and download URLs
+        return res.status(200).json({
+            success: true,
+            documents: documentsWithDetails,
+        });
+    } catch (error) {
+        console.error('Error fetching accessible documents:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'An error occurred while fetching accessible documents.',
+        });
+    }
+};
+
 
 module.exports = {
     getInvitationNamAndEmail,
@@ -585,6 +752,9 @@ module.exports = {
     verifyOTPForPasswordResetForBroker,
     resetPasswordForBroker,
     getEmployeeByInvtationId,
-    getTaskForemployee,
-    updateTaskByIdemployee
+    getTaskForEmployee,
+    updateTaskByIdemployee,
+    getTaskSummary,
+    getTaskList,
+    accessibleDocuments
 };

@@ -20,9 +20,11 @@ const {
     refreshToken,
     logout,
     getLoggedInEmployeeDetails,
-    employeeloginlogoutData
+    employeeloginlogoutData,
+    uploadFile
 } = require("../controllers/adminController");
 const verifyToken = require("../middlewares/verifyToken");
+const upload = require('../middlewares/multerConfig');
 const router = express.Router();
 
 
@@ -53,6 +55,7 @@ router.delete('/task/:id', verifyToken, deleteTaskById);
 
 router.get('/employee-logged', verifyToken, getLoggedInEmployeeDetails)
 
+router.post('/upload', verifyToken, upload.single('file'), uploadFile);
 
 
 module.exports = router;

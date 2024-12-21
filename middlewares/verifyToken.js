@@ -39,7 +39,7 @@ const verifyToken = async (req, res, next) => {
         }
     } catch (error) {
 
-        console.log(error);
+        console.log("error",error);
 
         let status = error.status || 500;
         let message = error.message || 'Internal server error';
