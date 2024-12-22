@@ -15,14 +15,24 @@ const validateLoginForAdmin = (data) => {
 // Joi validation for admin login
 const validateInvitation = (data) => {
     const schema = Joi.object({
-        employeeName: Joi.string().required().label('Employee Name'),
-        employeeEmail: Joi.string().email().required().label('Employee Email'),
-        password: Joi.string().required().label('Employee password'),
-
+      name: Joi.string().min(3).max(50).required().label('Employee Name'),
+      email: Joi.string().email().required().label('Employee Email'),
+      phone: Joi.string().required().label('Mobile no'),
+      password: Joi.string().required().label('Password'),
+      position: Joi.string().min(2).max(50).required().label('Position'),
+      department: Joi.string()
+        .valid('Engineering', 'Marketing', 'Sales', 'HR', 'Finance')
+        .required()
+        .label('Department'),
+      startDate: Joi.date().required().label('Start Date'),
+      type: Joi.string()
+        .valid('full-time', 'part-time', 'contract', 'intern')
+        .default('full-time')
+        .label('Employment Type'),
     });
-
+  
     return schema.validate(data);
-}
+  };
 
 module.exports = {
     validateLoginForAdmin,

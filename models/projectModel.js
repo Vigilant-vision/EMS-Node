@@ -8,6 +8,10 @@ const projectSchema = new Schema({
         type: String,
 
     },
+    projectDescription: {
+        type: String,
+
+    },
     projectStartdate: {
         type: String,
    

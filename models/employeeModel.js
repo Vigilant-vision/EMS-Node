@@ -2,67 +2,53 @@ const mongoose = require('mongoose');
 const mongoosePaginate = require('mongoose-paginate-v2');
 
 const employeeSchema = new mongoose.Schema(
-    {
-        name: {
-            type: String
-        },
-        phone: {
-            type: String,
-        },
-        email: {
-            type: String,
-            required: true,
-            unique: true
-        },
-        password: {
-            type: String,
-        },
-        dateOfBirth: {
-            type: Date,
-        },
-        image: {
-            type: String,
-        },
-        aboutMe: {
-            type: String,
-        },
-        employeeInformation: {
-            employeeId: {
-                type: String,
-            },
-            dateOfJoining: {
-                type: String,
-            },
-            designation: {
-                type: String,
-            },
-            typeOfEmployment: {
-                type: String,
-                enum: ['Full-time', 'Part-time', 'Internship'],
-            },
-        },
-        contactInformation: {
-            address: {
-                type: String,
-            },
-            state: {
-                type: String,
-            },
-            zipCode: {
-                type: Number,
-            },
-            country: {
-                type: String,
-            },
-        },
+  {
+    name: {
+      type: String,
+      required: true,
+      trim: true,
     },
-    {
-        timestamps: true,
-    }
+    email: {
+      type: String,
+      required: true,
+      unique: true,
+      lowercase: true,
+      trim: true,
+    },
+    phone: {
+      type: String,
+      trim: true,
+    },
+    password: {
+      type: String,
+      required: true,
+    },
+    position: {
+      type: String,
+      trim: true,
+    },
+    department: {
+      type: String,
+      enum: ['Engineering', 'Marketing', 'Sales', 'HR', 'Finance'],
+      required: true,
+    },
+    startDate: {
+      type: Date,
+      required: true,
+    },
+    type: {
+      type: String,
+      enum: ['full-time', 'part-time', 'contract', 'intern'],
+      default: 'full-time',
+    },
+  },
+  {
+    timestamps: true, // Automatically adds `createdAt` and `updatedAt` fields
+  }
 );
 
 employeeSchema.plugin(mongoosePaginate);
+
 const Employee = mongoose.model('Employee', employeeSchema);
 
-
-module.exports = { Employee }
+module.exports = Employee;

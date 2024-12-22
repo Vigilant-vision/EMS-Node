@@ -3,7 +3,6 @@ const jwt = require("jsonwebtoken");
 const crypto = require('crypto');
 const CryptoJS = require('crypto-js');
 const { Invitation } = require("../models/invitationModel");
-const { Employee } = require("../models/employeeModel");
 const Task = require('../models/taskModel');
 const { employeeRegisterSchema, validateLoginForEmployee, detailsValidationSchema } = require("../validations/employeeValidation");
 const { generateAccessToken } = require("../utils/generateToken");
@@ -12,6 +11,8 @@ const { successResponse, errorResponse } = require('../utils/apiResponse');
 const { Admin } = require('../models/adminModel');
 const { Project } = require('../models/projectModel');
 const Document = require('../models/document');
+const Employee = require('../models/employeeModel');
+const ApiResponse = require('../utils/apiResponse');
 
 //POST: Accept invitation from admin and employee register
 const getInvitationNamAndEmail = async (req, res) => {
@@ -256,24 +257,18 @@ const employeeLogout = async (req, res) => {
 
         // If no login entry is found or the user is already logged out, return an error
         if (!lastLoginEntry || lastLoginEntry.logoutTime) {
-            return res.status(400).send({ message: "User is not logged in" });
+            return res.status(400).send(ApiResponse(400, null, "User is not logged in"));
         }
 
         // Update the last login entry with the logout time
         lastLoginEntry.logoutTime = new Date();
         await lastLoginEntry.save();
 
-        // Respond with success message
-        return res.status(200).send({
-            success: true,
-            message: "Logout successful"
-        });
+        // Respond with success message using ApiResponse
+        return res.status(200).send(ApiResponse(200, null, "Logout successful"));
     } catch (error) {
         console.log(error);
-        return res.status(500).send({
-            success: false,
-            message: error.message
-        });
+        return res.status(500).send(ApiResponse(500, error.message, "Internal server error"));
     }
 };
 
@@ -498,44 +493,34 @@ const getEmployeeByInvtationId = async (req, res) => {
 // Controller to get a single task by ID
 const getTaskForEmployee = async (req, res) => {
     try {
-        // Get the employee id from the request
         const employeeId = req.id;
 
-        // Check if the employee exists
         const employee = await Employee.findById(employeeId);
         if (!employee) {
-            return errorResponse(res, 'Employee not found', null, 400);
+            return res.status(400).json(ApiResponse(400, null, 'Employee not found'));
         }
 
-        // Get status filter from the query parameters
         const { status } = req.query;
 
-        // Build the query object dynamically
         const query = { employeeId };
         if (status && status !== 'all') {
-            query.status = status; // Add status filter only if it's not 'all'
+            query.status = status; // Add status filter if it's not 'all'
         }
 
-        // Find tasks based on the query
         const tasks = await Task.find(query);
         if (!tasks || tasks.length === 0) {
-            return errorResponse(res, 'No tasks found', null, 404);
+            return res.status(404).json(ApiResponse(404, null, 'No tasks found'));
         }
 
-        // Process tasks to include admin name and project details
         const processedTasks = await Promise.all(
             tasks.map(async (task) => {
-                const processedTask = { ...task.toObject() }; // Create a new object to avoid reassigning a constant
+                const processedTask = { ...task.toObject() }; // Avoid mutating original task object
                 try {
                     const admin = await Admin.findById(task.assignedBy);
                     processedTask.assignee = admin ? admin.name : 'Unknown';
 
-                    // Format the assigned date
-                    processedTask.createdAt = new Date(processedTask.createdAt)
-                        .toISOString()
-                        .split('T')[0];
+                    processedTask.createdAt = new Date(processedTask.createdAt).toISOString().split('T')[0];
 
-                    // Fetch the project details
                     const project = await Project.findById(task.projectId);
                     processedTask.projectName = project ? project.projectName : 'Unknown';
                 } catch (error) {
@@ -547,57 +532,42 @@ const getTaskForEmployee = async (req, res) => {
             })
         );
 
-        // Send success response
-        return successResponse(res, 'Tasks fetched successfully', processedTasks);
+        return res.status(200).json(ApiResponse(200, processedTasks, 'Tasks fetched successfully'));
     } catch (error) {
         console.error('Error fetching tasks:', error);
-        return errorResponse(res, 'Internal server error', error.message);
+        return res.status(500).json(ApiResponse(500, error.message, 'Internal server error'));
     }
 };
 
 
 const updateTaskByIdemployee = async (req, res) => {
     try {
-        // Get the employee ID from the JWT token
         const userId = req.id;
 
-        // Check if the user is an employee
         const employee = await Employee.findById(userId);
         if (!employee) {
-            return res.status(400).send({
-                success: false,
-                message: 'Not an Employee'
-            });
+            return res.status(400).json(ApiResponse(400, null, 'Not an Employee'));
         }
 
         const { status, comment } = req.body;
 
-        // Find the task by ID and update the status and comments
         const updatedTask = await Task.findByIdAndUpdate(
             req.params.id,
             {
-                $set: { status }, // Update the status
-                $push: {
-                    comments: { text: comment }, // Add a new comment
-                }
+                $set: { status },
+                $push: { comments: { text: comment } },
             },
             { new: true }
         );
 
         if (!updatedTask) {
-            return res.status(404).json({ message: 'Task not found' });
+            return res.status(404).json(ApiResponse(404, null, 'Task not found'));
         }
 
-        res.status(200).json({
-            success: true,
-            message: 'Task updated successfully',
-            task: updatedTask
-        });
+        return res.status(200).json(ApiResponse(200, updatedTask, 'Task updated successfully'));
     } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: error.message,
-        });
+        console.error('Error updating task:', error);
+        return res.status(500).json(ApiResponse(500, error.message, 'Internal server error'));
     }
 };
 
@@ -607,7 +577,7 @@ const getTaskSummary = async (req, res) => {
 
         const employee = await Employee.findById(employeeId);
         if (!employee) {
-            return errorResponse(res, 'Employee not found', null, 400);
+            return res.status(400).json(ApiResponse(400, null, 'Employee not found'));
         }
 
         const tasks = await Task.find({ employeeId });
@@ -619,39 +589,34 @@ const getTaskSummary = async (req, res) => {
             ? ((completedTasks / totalTasks) * 100).toFixed(2)
             : 0;
 
-        return successResponse(res, 'Task summary fetched successfully', {
+        return res.status(200).json(ApiResponse(200, {
             totalTasks,
             completedTasks,
             pendingTasks,
             performance: `${performance}%`,
-        });
+        }, 'Task summary fetched successfully'));
     } catch (error) {
-        return errorResponse(res, 'Failed to fetch task summary', error.message);
+        return res.status(500).json(ApiResponse(500, error.message, 'Failed to fetch task summary'));
     }
 };
 
-
 const getTaskList = async (req, res) => {
     try {
-        // Get the employee ID from the request
         const employeeId = req.id;
 
-        // Check if the employee exists
         const employee = await Employee.findById(employeeId);
         if (!employee) {
-            return errorResponse(res, 'Employee not found', null, 404);
+            return res.status(404).json(ApiResponse(404, null, 'Employee not found'));
         }
 
-        // Fetch the top 3 tasks for the employee, sorted by severity and creation date
         const tasks = await Task.find({ employeeId })
-            .sort({ severity: -1, createdAt: -1 }) // Sort by severity (highest first) and then by creation date
+            .sort({ severity: -1, createdAt: -1 })
             .limit(3);
 
         if (!tasks || tasks.length === 0) {
-            return errorResponse(res, 'No tasks found', null, 404);
+            return res.status(404).json(ApiResponse(404, null, 'No tasks found'));
         }
 
-        // Map over tasks to include admin name
         const taskList = await Promise.all(
             tasks.map(async (task) => {
                 let adminName = 'Unknown';
@@ -665,14 +630,14 @@ const getTaskList = async (req, res) => {
                     taskDetails: task.taskDetails,
                     assignedBy: adminName,
                     status: task.status,
-                    date: new Date(task.createdAt).toISOString().split('T')[0], // Format the date
+                    date: new Date(task.createdAt).toISOString().split('T')[0],
                 };
             })
         );
 
-        return successResponse(res, 'Task list fetched successfully', taskList);
+        return res.status(200).json(ApiResponse(200, taskList, 'Task list fetched successfully'));
     } catch (error) {
-        return errorResponse(res, 'Failed to fetch task list', error.message, 500);
+        return res.status(500).json(ApiResponse(500, error.message, 'Failed to fetch task list'));
     }
 };
 

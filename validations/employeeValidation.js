@@ -24,24 +24,9 @@ const validateLoginForEmployee = (data) => {
     return schema.validate(data);
 }
 
-//Joi validation for employee add details
-const detailsValidationSchema = (data) => {
-    const schema = Joi.object({
-        // dateOfBirth: Joi.string().required().label("Date Of Birth"),
-        // designation: Joi.string().required().label("Designation"),
-        // typeOfEmployment: Joi.string().required().valid('Full-time', 'Part-time', 'Internship').label("Type Of Employment"),
-        address: Joi.string().required().label("Address"),
-        city: Joi.string().required().label("City"),
-        state: Joi.string().required().label("State"),
-        zipCode: Joi.number().required().label("Zip Code"),
-        country: Joi.string().required().label("Country"),
-    });
 
-    return schema.validate(data);
-}
 
 module.exports = {
     employeeRegisterSchema,
     validateLoginForEmployee,
-    detailsValidationSchema,
 };
