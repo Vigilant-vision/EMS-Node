@@ -514,20 +514,39 @@ const getTaskForEmployee = async (req, res) => {
 
         const processedTasks = await Promise.all(
             tasks.map(async (task) => {
-                const processedTask = { ...task.toObject() }; // Avoid mutating original task object
+                const processedTask = { ...task.toObject() }; // Avoid mutating the original task object
+
                 try {
+                    // Find assignedBy (Admin) name
                     const admin = await Admin.findById(task.assignedBy);
                     processedTask.assignee = admin ? admin.name : 'Unknown';
 
+                    // Format createdAt date
                     processedTask.createdAt = new Date(processedTask.createdAt).toISOString().split('T')[0];
+
+                    // Find project name
                     const project = await Project.findById(task.projectId);
-                    console.log(project.projectName)
                     processedTask.projectName = project ? project.projectName : 'Unknown';
+
+                    // Process comments to include names
+                    processedTask.comments = await Promise.all(
+                        task.comments.map(async (comment) => {
+                            const user = 
+                                await Admin.findById(comment.userId) || 
+                                await Employee.findById(comment.userId);
+                            
+                            return {
+                                ...comment.toObject(),
+                                userName: user ? user.name : 'Unknown', // Add userName from Admin or Employee
+                            };
+                        })
+                    );
                 } catch (error) {
-                    console.error('Error finding admin or project:', error);
+                    console.error('Error processing task:', error);
                     processedTask.assignee = 'Unknown';
                     processedTask.projectName = 'Unknown';
                 }
+
                 return processedTask;
             })
         );
@@ -538,6 +557,7 @@ const getTaskForEmployee = async (req, res) => {
         return res.status(500).json(ApiResponse(500, error.message, 'Internal server error'));
     }
 };
+
 
 
 const updateTaskByIdemployee = async (req, res) => {
@@ -591,7 +611,7 @@ const getTaskSummary = async (req, res) => {
 
         const totalTasks = tasks.length;
         const completedTasks = tasks.filter(task => task.status === 'Completed').length;
-        const pendingTasks = tasks.filter(task => task.status === 'Pending').length;
+        const pendingTasks = tasks.filter(task => task.status === 'Not Started').length;
         const performance = totalTasks > 0
             ? ((completedTasks / totalTasks) * 100).toFixed(2)
             : 0;

@@ -1357,70 +1357,63 @@ const uploadFile = async (req, res) => {
                 message: 'Not Admin'
             });
         }
+
         if (!req.file) {
-            // Return a response with ApiResponse for failure
             return res.status(400).json(
                 ApiResponse(400, null, 'No file uploaded or incorrect file format.')
             );
         }
 
-        const { accessibleEmployees, documentTitle } = req.body; // Get data from request body
+        const { accessibleEmployees, documentTitle } = req.body;
 
-        // If accessibleEmployees is a department or "all"
         let accessibleList = [];
 
-        // Check if accessibleEmployees is "all"
         if (accessibleEmployees === 'all') {
-            // Fetch all employees (you might want to use pagination for large datasets)
             const allEmployees = await Employee.find({});
-            accessibleList = allEmployees.map(emp => emp._id); // Get employee IDs
+            accessibleList = allEmployees.map(emp => emp._id);
         } else {
-            // If it's a department, fetch employees of that department
             const departmentEmployees = await Employee.find({ department: accessibleEmployees });
             if (departmentEmployees.length === 0) {
-                // Return a response with ApiResponse for failure
                 return res.status(400).json(
                     ApiResponse(400, null, `No employees found in the department '${accessibleEmployees}'.`)
                 );
             }
-            accessibleList = departmentEmployees.map(emp => emp._id); // Get employee IDs from the department
+            accessibleList = departmentEmployees.map(emp => emp._id);
         }
 
-      
-        const file = req.file; // The uploaded file
+        const file = req.file;
         if (!file.filename || !file.mimetype || !file.path) {
-            // Return a response with ApiResponse for failure
             return res.status(400).json(
                 ApiResponse(400, null, 'File information is incomplete.')
             );
         }
 
-        // Save the file to the database (Document model)
-        const filePath = `/uploads/${file.filename}`; // Adjust the path as needed
+        const filePath = `/uploads/${file.filename}`;
+        const downloadUrl = `${req.protocol}://${req.get('host')}${filePath}`; // Construct the download URL
 
         const newDocument = new Document({
             filename: file.filename,
             fileType: file.mimetype,
             filePath,
             uploadedBy: adminId,
-            accessibleBy: accessibleList, // Store the list of employee IDs
+            accessibleBy: accessibleList,
             documentTitle,
         });
 
         await newDocument.save();
 
-        // Return a response with ApiResponse for success
         return res.status(200).json(
-            ApiResponse(200, newDocument, 'File uploaded successfully!')
+            ApiResponse(200, { ...newDocument.toObject(), downloadUrl }, 'File uploaded successfully!')
         );
     } catch (error) {
         console.error('Error uploading file:', error);
-        // Return a response with ApiResponse for failure
         return res.status(500).json(
             ApiResponse(500, error.message, 'An error occurred while uploading the file.')
         );
     }
 };
+
+
 
 const getAllDocuments = async (req, res) => {
     try {
@@ -1519,7 +1512,7 @@ const getStatistics = async (req, res) => {
 
         // Get total tasks count and pending tasks count
         const totalTasks = await Task.countDocuments();
-        const pendingTasks = await Task.countDocuments({ status: 'Pending' });
+        const pendingTasks = await Task.countDocuments({ status: 'Not Started' });
 
         // Calculate overall performance (assuming performance is based on the ratio of completed tasks)
         const completedTasks = await Task.countDocuments({ status: 'Completed' });
