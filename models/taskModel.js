@@ -11,29 +11,36 @@ const taskSchema = new Schema(
         },
         projectId: {
             type: Schema.Types.ObjectId,
+            ref: 'Project', // Assuming there's a Project model for reference
         },
         taskDetails: {
             type: String,
+            required: true, // Ensure taskDetails is always provided
+        },
+        description: {
+            type: String, // New field for task description
+            required: false, // Optional field
         },
         assignedBy: {
             type: Schema.Types.ObjectId,    // Reference to the Admin model
             ref: 'Admin',
-            required: true
+            required: true,
         },
         status: {
             type: String,
             enum: ['Not Started', 'Completed', 'In Progress'],
-            default: 'Not Started' // Set default status to 'Pending'
+            default: 'Not Started', // Default status
         },
         comments: [
             {
                 text: { type: String, required: true },  // Comment text
                 createdAt: { type: Date, default: Date.now },  // Timestamp
+                userId: { type: Schema.Types.ObjectId}, // ID of the user who commented
             }
         ]
     },
     {
-        timestamps: true,
+        timestamps: true, // Automatically manage createdAt and updatedAt
     }
 );
 

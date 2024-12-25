@@ -520,8 +520,8 @@ const getTaskForEmployee = async (req, res) => {
                     processedTask.assignee = admin ? admin.name : 'Unknown';
 
                     processedTask.createdAt = new Date(processedTask.createdAt).toISOString().split('T')[0];
-
                     const project = await Project.findById(task.projectId);
+                    console.log(project.projectName)
                     processedTask.projectName = project ? project.projectName : 'Unknown';
                 } catch (error) {
                     console.error('Error finding admin or project:', error);
@@ -542,34 +542,41 @@ const getTaskForEmployee = async (req, res) => {
 
 const updateTaskByIdemployee = async (req, res) => {
     try {
-        const userId = req.id;
+        const userId = req.id; // Get the ID of the logged-in user (who is adding the comment)
 
+        // Check if the employee exists based on the userId
         const employee = await Employee.findById(userId);
         if (!employee) {
             return res.status(400).json(ApiResponse(400, null, 'Not an Employee'));
         }
 
+        // Destructure status and comment from the request body
         const { status, comment } = req.body;
 
+        // Update the task with the new status and push the comment along with the userId
         const updatedTask = await Task.findByIdAndUpdate(
             req.params.id,
             {
-                $set: { status },
-                $push: { comments: { text: comment } },
+                $set: { status }, // Update the status of the task
+                $push: { comments: { text: comment, userId: userId } }, // Add the comment with userId
             },
-            { new: true }
+            { new: true } // Return the updated task
         );
 
+        // If task not found, return a 404 error
         if (!updatedTask) {
             return res.status(404).json(ApiResponse(404, null, 'Task not found'));
         }
 
+        // Return the updated task details
         return res.status(200).json(ApiResponse(200, updatedTask, 'Task updated successfully'));
     } catch (error) {
+        // Handle any errors
         console.error('Error updating task:', error);
         return res.status(500).json(ApiResponse(500, error.message, 'Internal server error'));
     }
 };
+
 
 const getTaskSummary = async (req, res) => {
     try {
@@ -640,7 +647,6 @@ const getTaskList = async (req, res) => {
         return res.status(500).json(ApiResponse(500, error.message, 'Failed to fetch task list'));
     }
 };
-
 const accessibleDocuments = async (req, res) => {
     try {
         // Extract user ID from the request (populated by authentication middleware)
@@ -655,16 +661,20 @@ const accessibleDocuments = async (req, res) => {
             });
         }
 
-        // Find documents accessible by the user
-        const accessibleDocuments = await Document.find({
-            accessibleBy: { $elemMatch: { $in: [employeeId] } },
-        });
+        // Get the department of the employee
+        const employeeDepartment = employee.department;
+
+        // Find documents accessible by employees in the same department
+        const departmentDocuments = await Document.find({
+            accessibleBy: { $in: [employeeId, employeeDepartment] },
+        }).sort({ createdAt: -1 }); // Sort by createdAt in descending order
 
         console.log("employeeId", employeeId);
-        console.log("accessibleDocuments", accessibleDocuments);
+        console.log("employeeDepartment", employeeDepartment);
+        console.log("departmentDocuments", departmentDocuments);
 
         // Handle the case where no documents are found
-        if (accessibleDocuments.length === 0) {
+        if (departmentDocuments.length === 0) {
             return res.status(404).json({
                 success: false,
                 message: 'No accessible documents found.',
@@ -676,7 +686,7 @@ const accessibleDocuments = async (req, res) => {
 
         // Fetch the admin's name for each document and include the full file path
         const documentsWithDetails = await Promise.all(
-            accessibleDocuments.map(async (doc) => {
+            departmentDocuments.map(async (doc) => {
                 // Fetch the admin details using the uploadedBy field
                 const admin = await Admin.findById(doc.uploadedBy);
 
@@ -707,6 +717,7 @@ const accessibleDocuments = async (req, res) => {
 };
 
 
+
 module.exports = {
     getInvitationNamAndEmail,
     acceptInvitationAndSignup,
@@ -721,5 +732,5 @@ module.exports = {
     updateTaskByIdemployee,
     getTaskSummary,
     getTaskList,
-    accessibleDocuments
+    accessibleDocuments,
 };

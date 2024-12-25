@@ -632,22 +632,32 @@ const updateProject = async (req, res) => {
         if (projectDescription) {
             updateFields.projectDescription = projectDescription;
         }
-        
+
         if (employees && Array.isArray(employees)) {
-            // Fetch the current project to check if employees already exist
+            // Fetch the current project to manage the employees list
             const currentProject = await Project.findById(projectId);
             if (!currentProject) {
                 return res.status(404).json(ApiResponse(404, null, 'Project not found.'));
             }
 
-            // Filter employees to add only those who are not already in the project
-            const existingEmployeeIds = currentProject.Employeelist.map(emp => emp._id.toString());
+            // Extract employee IDs from the incoming and current lists
+            const incomingEmployeeIds = employees.map(emp => emp._id.toString());
+            const currentEmployeeIds = currentProject.Employeelist.map(emp => emp._id.toString());
 
-            const newEmployees = employees.filter(emp => !existingEmployeeIds.includes(emp._id));
+            // Determine employees to add and remove
+            const employeesToAdd = employees.filter(emp => !currentEmployeeIds.includes(emp._id));
+            const employeesToRemove = currentEmployeeIds.filter(empId => !incomingEmployeeIds.includes(empId));
 
-            if (newEmployees.length > 0) {
+            // Update the project
+            if (employeesToAdd.length > 0) {
                 updateFields.$push = {
-                    Employeelist: { $each: newEmployees },
+                    Employeelist: { $each: employeesToAdd },
+                };
+            }
+
+            if (employeesToRemove.length > 0) {
+                updateFields.$pull = {
+                    Employeelist: { _id: { $in: employeesToRemove } },
                 };
             }
         }
@@ -667,6 +677,54 @@ const updateProject = async (req, res) => {
     } catch (error) {
         console.error('Error updating project:', error);
         res.status(500).json(ApiResponse(500, error.message, 'Internal server error.'));
+    }
+};
+
+const deleteProject = async (req, res) => {
+    try {
+        // Get the admin ID from the JWT token
+        const adminId = req.id;
+
+        // Check if the user is an admin
+        const admin = await Admin.findById(adminId);
+        if (!admin) {
+            return res.status(403).json({
+                success: false,
+                message: 'Unauthorized: Only admins can delete projects.',
+            });
+        }
+
+        const { projectId } = req.params;
+
+        if (!projectId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Project ID is required.',
+            });
+        }
+
+        // Find and delete the project
+        const deletedProject = await Project.findByIdAndDelete(projectId);
+
+        if (!deletedProject) {
+            return res.status(404).json({
+                success: false,
+                message: 'Project not found.',
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: 'Project deleted successfully.',
+            data: deletedProject, // Optionally return the deleted project
+        });
+    } catch (error) {
+        console.error('Error deleting project:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Internal server error.',
+            error: error.message,
+        });
     }
 };
 
@@ -755,7 +813,7 @@ const getAllEmployeesList = async (req, res) => {
 // Controller to create a new task
 const assignTask = async (req, res) => {
     try {
-        const { employeeId, projectId, taskDetails } = req.body;
+        const { employeeId, projectId, taskDetails, description } = req.body;
 
         // Get the admin id from jwt token
         const adminId = req.id;
@@ -768,20 +826,41 @@ const assignTask = async (req, res) => {
             });
         }
 
+        // Create the new task with the description
         const newTask = new Task({
             employeeId: employeeId,
             projectId: projectId,
             taskDetails: taskDetails,
+            description: description || '', // Add description or default to an empty string
             assignedBy: admin._id,
         });
 
         const savedTask = await newTask.save();
 
+        // Populate employee details (name) and comments with user name in the saved task
+        const populatedTask = await Task.findById(savedTask._id)
+            .populate({
+                path: 'employeeId',
+                select: 'name', // Only fetch the name field for employee
+            })
+            .populate({
+                path: 'comments.userId', // Populate the userId of the comment
+                select: 'name', // Only fetch the name field for the user
+            });
+
+        // Check if the employeeId is populated correctly
+        if (populatedTask && populatedTask.employeeId) {
+            // Add the employeeName field manually from the populated employeeId
+            populatedTask.employeeName = populatedTask.employeeId.name;
+        }
+
+        // Send the response with the additional employeeName field
         return res.status(200).send({
             success: true,
-            savedTask: savedTask
+            savedTask: populatedTask
         });
     } catch (error) {
+        console.log(error)
         return res.status(500).send({
             success: false,
             error: 'Internal server error',
@@ -789,6 +868,7 @@ const assignTask = async (req, res) => {
         });
     }
 };
+
 
 // Controller to get all tasks
 const getAllTasks = async (req, res) => {
@@ -812,25 +892,60 @@ const getAllTasks = async (req, res) => {
             );
         }
 
-        // Fetch tasks for the given projectId and populate employee details
-        const tasks = await Task.find({ projectId: projectId })
-            .populate('employeeId', 'name'); // Populate only the 'name' field of the employee
+        // Fetch tasks for the given projectId
+        const tasks = await Task.find({ projectId: projectId });
 
-        // Check and format tasks with employee name
-        const tasksWithEmployeeDetails = tasks.map(task => {
-            if (task.employeeId) {
-                task.employeeName = task.employeeId.name; // Access the populated employee name
-            } else {
-                task.employeeName = 'Unknown Employee'; // If no employee is found
-            }
-            task._id = task._id.toString(); // Ensure _id is in string format
-            task.projectId = task.projectId.toString(); // Ensure projectId is in string format
-            task.employeeId = task.employeeId ? task.employeeId.toString() : null; // Ensure employeeId is in string format
-            return task;
+        // Extract employee and admin details from the comments
+        const commentUserIds = tasks.flatMap(task => task.comments.map(comment => comment.userId));
+        const uniqueUserIds = [...new Set(commentUserIds)];  // Remove duplicate userIds
+
+        // Fetch employees and admins by their ids
+        const employees = await Employee.find({ _id: { $in: uniqueUserIds } });
+        const admins = await Admin.find({ _id: { $in: uniqueUserIds } });
+
+        // Create a map for quick lookup of user names (from both Employee and Admin collections)
+        const userNameMap = {};
+
+        employees.forEach(employee => {
+            userNameMap[employee._id.toString()] = employee.name;
         });
 
+        admins.forEach(admin => {
+            userNameMap[admin._id.toString()] = admin.name;
+        });
+
+        // Format tasks with populated comment details
+        const tasksWithDetails = await Promise.all(tasks.map(async (task) => {
+            const taskObject = task.toObject(); // Convert task to a plain object
+
+            // Fetch employee name from Employee collection
+            const employee = task.employeeId ? await Employee.findById(task.employeeId) : null;
+            taskObject.employeeName = employee ? employee.name : 'Unknown Employee';
+
+            // Fetch admin name from Admin collection
+            const assignedByAdmin = task.assignedBy ? await Admin.findById(task.assignedBy) : null;
+            taskObject.assignedByName = assignedByAdmin ? assignedByAdmin.name : 'Unknown Admin';
+
+            // Add names to each comment in the task
+            taskObject.comments = task.comments.map(comment => {
+                const commentObject = { ...comment.toObject() };
+
+                // Check if the userId exists in the userNameMap and add the name to the comment
+                commentObject.userName = userNameMap[comment.userId.toString()] || 'Unknown User';
+
+                return commentObject;
+            });
+
+            // Ensure IDs are in string format
+            taskObject._id = task._id.toString();
+            taskObject.projectId = task.projectId.toString();
+            taskObject.employeeId = task.employeeId ? task.employeeId.toString() : null;
+
+            return taskObject;
+        }));
+
         return res.status(200).json(
-            ApiResponse(200, tasksWithEmployeeDetails, 'Tasks fetched successfully') // Using ApiResponse
+            ApiResponse(200, tasksWithDetails, 'Tasks fetched successfully') // Using ApiResponse
         );
     } catch (error) {
         console.log(error);
@@ -839,6 +954,7 @@ const getAllTasks = async (req, res) => {
         );
     }
 };
+
 
 // Controller to get a single task by ID
 const getTaskById = async (req, res) => {
@@ -896,14 +1012,20 @@ const updateTaskById = async (req, res) => {
 
         // Update the status if provided
         if (status) {
+            if (!['Not Started', 'In Progress', 'Completed'].includes(status)) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Invalid status value',
+                });
+            }
             task.status = status;
         }
 
         // Add a comment if provided
         if (comment) {
-            console.log(comment)
             task.comments.push({
                 text: comment,
+                userId: admin._id, // Use the admin's ID for now
             });
         }
 
@@ -953,17 +1075,150 @@ const deleteTaskById = async (req, res) => {
 
 const getLoggedInEmployeeDetails = async (req, res) => {
     try {
-        const { id } = req;
-        const employee = await Employee.findById(id);
-        if (!employee) {
-            return res.status(404).json(ApiResponse(404, null, 'Employee not found'));
+        const adminId = req.id;
+        // Check if the user is an admin
+        const admin = await Admin.findById(adminId);
+        if (!admin) {
+            return res.status(400).send({
+                success: false,
+                message: 'Not Admin'
+            });
         }
-        return res.status(200).json(ApiResponse(200, employee, 'Employee details fetched successfully'));
+
+        // Find login records where logoutTime is null
+        const loggedInEmployees = await LoginLogout.find({ logoutTime: { $eq: null } })
+            .populate('userId', 'name')  // Populate the userId field to get employee details like name
+            .exec();
+
+        // If no logged-in employees are found, return a response indicating no records
+        if (loggedInEmployees.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'No employees are currently logged in'
+            });
+        }
+
+        // Group the login records by userId and keep the latest login record for each employee
+        const latestLoginRecords = {};
+
+        loggedInEmployees.forEach(record => {
+            // If the employee is not in the object or if the current login is more recent, update the record
+            if (!latestLoginRecords[record.userId._id] || record.loginTime > latestLoginRecords[record.userId._id].loginTime) {
+                latestLoginRecords[record.userId._id] = {
+                    employeeId: record.userId._id,
+                    name: record.userId.name,
+                    loginTime: record.loginTime,
+                };
+            }
+        });
+
+        // Convert the grouped object into an array of employee details
+        const employeeDetails = Object.values(latestLoginRecords);
+
+        // Return the list of logged-in employees (latest only)
+        return res.status(200).json({
+            success: true,
+            data: employeeDetails
+        });
     } catch (error) {
-        console.error('Error fetching employee details:', error);
-        return res.status(500).json(ApiResponse(500, error.message, 'Internal server error'));
+        console.error('Error fetching logged-in employee details:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'An error occurred while fetching employee details',
+            error: error.message
+        });
     }
 };
+
+const getEmployeeWorkSessions = async (req, res) => {
+    const { month, year } = req.body;
+
+    // Validate input
+    if (!month || !year) {
+        return res.status(400).json(ApiResponse(400, null, 'Please provide month and year.'));
+    }
+
+    try {
+        // Convert month and year to a start and end date
+        const startDate = new Date(year, month - 1, 1); // Month is 0-indexed in JavaScript (January is 0)
+        const endDate = new Date(year, month, 0); // Last day of the given month
+
+        // Query to find all login/logout records for all employees within the given month
+        const workSessions = await LoginLogout.find({
+            loginTime: { $gte: startDate, $lte: endDate }
+        }).populate('userId').exec(); // Populating employee details
+
+        // If no records found, return an appropriate message
+        if (workSessions.length === 0) {
+            return res.status(404).json(ApiResponse(404, null, 'No work sessions found for employees in the specified month.'));
+        }
+
+        // Initialize total work duration
+        let totalWorkDuration = 0;
+
+        // Create an array to store work session details grouped by employee
+        const employeesWorkSessions = [];
+
+        // Group work sessions by employee and calculate work duration
+        workSessions.forEach(session => {
+            const loginTime = session.loginTime;
+            const logoutTime = session.logoutTime ? session.logoutTime : 'Not Logged Out';
+            const duration = session.logoutTime ? (new Date(session.logoutTime) - new Date(session.loginTime)) : null;
+
+            // Calculate the total work duration for each employee
+            if (duration) {
+                totalWorkDuration += duration;
+            }
+
+            const employeeIndex = employeesWorkSessions.findIndex(emp => emp.employeeName === session.userId.name);
+
+            if (employeeIndex >= 0) {
+                // Add session data for existing employee
+                employeesWorkSessions[employeeIndex].sessions.push({
+                    loginTime,
+                    logoutTime,
+                    duration: duration ? `${Math.floor(duration / 3600000)} hours ${Math.floor((duration % 3600000) / 60000)} minutes` : null
+                });
+                // Add duration to total work time for that employee
+                employeesWorkSessions[employeeIndex].totalWorkDuration += duration;
+            } else {
+                // Add new employee with initial session data
+                employeesWorkSessions.push({
+                    employeeName: session.userId.name,
+                    sessions: [{
+                        loginTime,
+                        logoutTime,
+                        duration: duration ? `${Math.floor(duration / 3600000)} hours ${Math.floor((duration % 3600000) / 60000)} minutes` : null
+                    }],
+                    totalWorkDuration: duration || 0
+                });
+            }
+        });
+
+        // Add total work time for each employee in hours and minutes
+        employeesWorkSessions.forEach(emp => {
+            const totalEmpWorkHours = Math.floor(emp.totalWorkDuration / 3600000);
+            const totalEmpWorkMinutes = Math.floor((emp.totalWorkDuration % 3600000) / 60000);
+            emp.totalWorkTime = `${totalEmpWorkHours} hours ${totalEmpWorkMinutes} minutes`;
+        });
+
+        // Convert total work duration into hours and minutes for all employees
+        const totalWorkHours = Math.floor(totalWorkDuration / 3600000);
+        const totalWorkMinutes = Math.floor((totalWorkDuration % 3600000) / 60000);
+
+        // Return the work sessions with durations and total work time for each employee and overall
+        return res.status(200).json(ApiResponse(200, {
+            employeesWorkSessions,
+            totalWorkDone: `${totalWorkHours} hours ${totalWorkMinutes} minutes`
+        }, 'Work sessions fetched successfully.'));
+
+    } catch (error) {
+        console.error('Error fetching work sessions:', error);
+        return res.status(500).json(ApiResponse(500, error.message, 'An error occurred while fetching work sessions.'));
+    }
+};
+
+module.exports = getEmployeeWorkSessions;
 
 
 const employeeloginlogoutData = async (req, res) => {
@@ -971,6 +1226,10 @@ const employeeloginlogoutData = async (req, res) => {
     const pageSize = 12;
 
     try {
+        // Count the total number of records
+        const totalRecords = await LoginLogout.countDocuments();
+
+        // Fetch paginated login/logout data
         const loginLogoutData = await LoginLogout.aggregate([
             {
                 $lookup: {
@@ -1026,16 +1285,37 @@ const employeeloginlogoutData = async (req, res) => {
                     }
                 }
             },
+            {
+                $sort: {
+                    loginTime: -1, // Sort by loginTime in descending order
+                    logoutTime: 1 // Ensure "Not Logged Out" records come last
+                }
+            },
             { $skip: (page - 1) * pageSize },
             { $limit: pageSize }
         ]);
 
-        return res.status(200).json(ApiResponse(200, loginLogoutData, 'Login/logout data fetched successfully'));
+        // Calculate total pages
+        const totalPages = Math.ceil(totalRecords / pageSize);
+
+        // Send response with pagination metadata
+        return res.status(200).json(
+            ApiResponse(200, {
+                data: loginLogoutData,
+                pagination: {
+                    totalRecords,
+                    currentPage: page,
+                    pageSize,
+                    totalPages
+                }
+            }, 'Login/logout data fetched successfully')
+        );
     } catch (error) {
         console.error('Error fetching login/logout data:', error);
         return res.status(500).json(ApiResponse(500, error.message, 'Internal server error'));
     }
 };
+
 
 const employeeusagetime = async (req, res) => {
     const employeeId = req.params.employeeId; // Get the employee ID from request params
@@ -1292,6 +1572,7 @@ module.exports = {
     searchEmployee,
     projectassign,
     updateProject,
+    deleteProject,
     getAllProjects,
     getAutoEmployee,
     assignTask,
@@ -1306,6 +1587,7 @@ module.exports = {
     getAllDocuments,
     deleteDocument,
     getAllEmployeesList,
-    getStatistics
+    getStatistics,
+    getEmployeeWorkSessions
 };
 

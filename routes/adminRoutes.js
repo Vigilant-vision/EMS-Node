@@ -16,6 +16,7 @@ const {
     getTaskById,
     updateTaskById,
     deleteTaskById,
+    deleteProject,
     refreshToken,
     logout,
     getLoggedInEmployeeDetails,
@@ -23,7 +24,8 @@ const {
     uploadFile,
     getAllDocuments,
     deleteDocument,
-    getStatistics
+    getStatistics,
+    getEmployeeWorkSessions
 } = require("../controllers/adminController");
 const verifyToken = require("../middlewares/verifyToken");
 const upload = require('../middlewares/multerConfig');
@@ -45,6 +47,10 @@ router.get('/employee-lists', verifyToken, getAllEmployeesList);
 
 router.post('/project-assign', verifyToken, projectassign);
 router.post('/update-project', verifyToken, updateProject);
+router.delete('/delete-project/:projectId', verifyToken, deleteProject);
+
+router.post('/get-employeeReport', verifyToken, getEmployeeWorkSessions);
+
 router.get('/get-project', verifyToken, getAllProjects);
 router.get('/autoemployee', verifyToken, getAutoEmployee);
 router.post('/assign-task', verifyToken, assignTask);
