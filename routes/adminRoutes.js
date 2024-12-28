@@ -62,7 +62,7 @@ router.delete('/task/:id', verifyToken, deleteTaskById);
 // router.delete("/", logout)
 
 router.get('/employee-logged', verifyToken, getLoggedInEmployeeDetails)
-router.get('/loginlogoutdata', employeeloginlogoutData);
+router.get('/loginlogoutdata',verifyToken, employeeloginlogoutData);
 
 router.post('/upload', verifyToken, upload.single('file'), uploadFile);
 router.get('/document-list', verifyToken, getAllDocuments)

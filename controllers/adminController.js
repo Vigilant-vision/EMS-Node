@@ -1220,7 +1220,6 @@ const getEmployeeWorkSessions = async (req, res) => {
 
 module.exports = getEmployeeWorkSessions;
 
-
 const employeeloginlogoutData = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const pageSize = 12;
@@ -1229,71 +1228,45 @@ const employeeloginlogoutData = async (req, res) => {
         // Count the total number of records
         const totalRecords = await LoginLogout.countDocuments();
 
-        // Fetch paginated login/logout data
-        const loginLogoutData = await LoginLogout.aggregate([
-            {
-                $lookup: {
-                    from: 'employees',
-                    localField: 'userId',
-                    foreignField: '_id',
-                    as: 'employee'
-                }
-            },
-            {
-                $unwind: '$employee'
-            },
-            {
-                $addFields: {
-                    istLoginTime: {
-                        $dateToString: {
-                            format: '%Y-%m-%dT%H:%M:%S.%L%z',
-                            date: { $add: ['$loginTime', 19800000] }
-                        }
-                    },
-                    istLogoutTime: {
-                        $dateToString: {
-                            format: '%Y-%m-%dT%H:%M:%S.%L%z',
-                            date: { $add: ['$logoutTime', 19800000] }
-                        }
-                    },
-                    durationMilliseconds: { $subtract: ['$logoutTime', '$loginTime'] }
-                }
-            },
-            {
-                $addFields: {
-                    durationHours: { $floor: { $divide: ['$durationMilliseconds', 3600000] } },
-                    durationMinutes: { $floor: { $divide: [{ $subtract: ['$durationMilliseconds', { $multiply: [{ $floor: { $divide: ['$durationMilliseconds', 3600000] } }, 3600000] }] }, 60000] } },
-                    durationSeconds: { $floor: { $divide: [{ $subtract: ['$durationMilliseconds', { $multiply: [{ $floor: { $divide: ['$durationMilliseconds', 60000] } }, 60000] }] }, 1000] } }
-                }
-            },
-            {
-                $project: {
-                    _id: 0,
-                    employeeId: '$userId',
-                    name: '$employee.name',
-                    date: { $dateToString: { format: '%d-%m-%Y', date: '$loginTime' } },
-                    istLoginTime: { $substr: ['$istLoginTime', 11, 8] },
-                    istLogoutTime: { $substr: ['$istLogoutTime', 11, 8] },
-                    duration: {
-                        $concat: [
-                            { $toString: '$durationHours' },
-                            ':',
-                            { $toString: { $cond: [{ $lte: ['$durationMinutes', 9] }, { $concat: ['0', { $toString: '$durationMinutes' }] }, { $toString: '$durationMinutes' }] } },
-                            ':',
-                            { $toString: { $cond: [{ $lte: ['$durationSeconds', 9] }, { $concat: ['0', { $toString: '$durationSeconds' }] }, { $toString: '$durationSeconds' }] } }
-                        ]
-                    }
-                }
-            },
-            {
-                $sort: {
-                    loginTime: -1, // Sort by loginTime in descending order
-                    logoutTime: 1 // Ensure "Not Logged Out" records come last
-                }
-            },
-            { $skip: (page - 1) * pageSize },
-            { $limit: pageSize }
-        ]);
+        // Fetch login/logout data with pagination
+        const loginLogoutData = await LoginLogout.find()
+            .skip((page - 1) * pageSize)
+            .limit(pageSize)
+            .sort({ createdAt: -1 });
+
+        // Fetch employee details for each record
+        const userIds = loginLogoutData.map(record => record.userId);
+        const employees = await Employee.find({ _id: { $in: userIds } });
+
+        // Create a map for quick employee lookups
+        const employeeMap = employees.reduce((map, employee) => {
+            map[employee._id] = employee;
+            return map;
+        }, {});
+
+        // Transform the data
+        const transformedData = loginLogoutData.map(record => {
+            const employee = employeeMap[record.userId] || {};
+            const durationMilliseconds = record.logoutTime ? record.logoutTime - record.loginTime : 0;
+            const durationHours = Math.floor(durationMilliseconds / 3600000);
+            const durationMinutes = Math.floor((durationMilliseconds % 3600000) / 60000);
+            const durationSeconds = Math.floor((durationMilliseconds % 60000) / 1000);
+
+            const formatTime = time => (time <= 9 ? `0${time}` : time);
+
+            return {
+                employeeId: record.userId,
+                name: employee.name || 'Unknown',
+                date: record.createdAt.toISOString().slice(0, 10).split('-').reverse().join('-'), // Format as DD-MM-YYYY
+                istLoginTime: record.loginTime,
+                istLogoutTime: record.logoutTime
+                    ? record.logoutTime
+                    : 'Not Logged Out',
+                duration: record.logoutTime
+                    ? `${durationHours}:${formatTime(durationMinutes)}:${formatTime(durationSeconds)}`
+                    : 'N/A'
+            };
+        });
 
         // Calculate total pages
         const totalPages = Math.ceil(totalRecords / pageSize);
@@ -1301,7 +1274,7 @@ const employeeloginlogoutData = async (req, res) => {
         // Send response with pagination metadata
         return res.status(200).json(
             ApiResponse(200, {
-                data: loginLogoutData,
+                data: transformedData,
                 pagination: {
                     totalRecords,
                     currentPage: page,
@@ -1315,6 +1288,7 @@ const employeeloginlogoutData = async (req, res) => {
         return res.status(500).json(ApiResponse(500, error.message, 'Internal server error'));
     }
 };
+
 
 
 const employeeusagetime = async (req, res) => {
