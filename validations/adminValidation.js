@@ -18,7 +18,13 @@ const validateInvitation = (data) => {
       name: Joi.string().min(3).max(50).required().label('Employee Name'),
       email: Joi.string().email().required().label('Employee Email'),
       phone: Joi.string().required().label('Mobile no'),
-      password: Joi.string().required().label('Password'),
+      password: Joi.string()
+      .pattern(new RegExp("^(?=.*[A-Z])(?=.*\\d)(?=.*[!@#$%^&*])[A-Za-z\\d!@#$%^&*]{8,}$"))
+      .required()
+      .label('Password')
+      .messages({
+        "string.pattern.base": "Password must have at least one uppercase letter, one integer, one special character, and be at least 8 characters long.",
+      }),
       position: Joi.string().min(2).max(50).required().label('Position'),
       department: Joi.string()
         .valid('Engineering', 'Marketing', 'Sales', 'HR', 'Finance')
@@ -29,6 +35,8 @@ const validateInvitation = (data) => {
         .valid('full-time', 'part-time', 'contract', 'intern')
         .default('full-time')
         .label('Employment Type'),
+        active: Joi.boolean().default(true).label('Active Status'),
+
     });
   
     return schema.validate(data);

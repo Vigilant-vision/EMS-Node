@@ -5,6 +5,7 @@ const {
     getAllEmployees,
     getEmployeeById,
     deleteEmployee,
+    updateEmployeeStatus,
     searchEmployee,
     projectassign,
     getAllProjects,
@@ -25,7 +26,8 @@ const {
     getAllDocuments,
     deleteDocument,
     getStatistics,
-    getEmployeeWorkSessions
+    getEmployeeWorkSessions,
+    updateEmployeeDetails
 } = require("../controllers/adminController");
 const verifyToken = require("../middlewares/verifyToken");
 const upload = require('../middlewares/multerConfig');
@@ -41,6 +43,9 @@ router.post('/invite-employee', verifyToken, inviteEmployee);
 router.get('/get-all-employees', verifyToken, getAllEmployees);
 router.get('/get-employee/:id', verifyToken, getEmployeeById);
 router.delete('/delete-employee/:id', verifyToken, deleteEmployee);
+router.put('/update-employee-status/:id', verifyToken, updateEmployeeStatus);
+router.post('/employees/:id', verifyToken, updateEmployeeDetails);
+
 router.get('/search-employee', verifyToken, searchEmployee);
 router.get('/employee-lists', verifyToken, getAllEmployeesList);
 
@@ -69,5 +74,4 @@ router.get('/document-list', verifyToken, getAllDocuments)
 router.post('/delete-document/:documentId', verifyToken, deleteDocument)
 
 router.get('/admin-stats', verifyToken,getStatistics );
-
 module.exports = router;

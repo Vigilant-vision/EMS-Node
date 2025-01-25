@@ -41,6 +41,10 @@ const employeeSchema = new mongoose.Schema(
       enum: ['full-time', 'part-time', 'contract', 'intern'],
       default: 'full-time',
     },
+    active: {
+      type: Boolean,
+      default: true, // Default to active
+    },
   },
   {
     timestamps: true, // Automatically adds `createdAt` and `updatedAt` fields
