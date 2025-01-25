@@ -203,12 +203,19 @@ const employeeLogin = async (req, res) => {
             });
 
         const { email, password } = req.body;
-        console.log(email, password);
 
         // Find the employee by email
         const employee = await Employee.findOne({ email: email });
         if (!employee) {
             return res.status(400).send({ message: "Invalid email" });
+        }
+
+        // Check if the employee is active
+        if (!employee.active) {
+            return res.status(403).send({
+                success: false,
+                message: "Your account has been restricted by the admin."
+            });
         }
 
         // Compare password with hashed password
@@ -247,6 +254,7 @@ const employeeLogin = async (req, res) => {
     }
 };
 
+
 const employeeLogout = async (req, res) => {
     try {
         // Extract user ID from the request or JWT token
@@ -271,9 +279,6 @@ const employeeLogout = async (req, res) => {
         return res.status(500).send(ApiResponse(500, error.message, "Internal server error"));
     }
 };
-
-
-
 
 // Function to send OTP for forgot password
 const sendOTPForPasswordResetForBroker = async (req, res) => {

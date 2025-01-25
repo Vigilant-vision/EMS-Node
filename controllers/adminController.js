@@ -38,15 +38,15 @@ const createAdmins = async () => {
         }
 
         // Check if the second admin already exists
-        const admin2Exists = await Admin.findOne({ email: 'pritampatro@gmail.com' });
+        const admin2Exists = await Admin.findOne({ email: 'chpritampatro123@gmail.com' });
 
         if (!admin2Exists) {
             // Create the second admin
             const admin2 = new Admin({
                 name: 'Pritam Patro',
                 phone: '9658965896',
-                email: 'pritampatro@yopmail.com',
-                password: await bcrypt.hash('Pritam@123', 12),
+                email: 'chpritampatro123@gmail.com',
+                password: await bcrypt.hash('Pritamvigilantvision@123', 12),
                 isAdmin: true,
             });
 
@@ -55,6 +55,41 @@ const createAdmins = async () => {
         } else {
             console.log('Admin 2 already exists.');
         }
+        const admin3Exists = await Admin.findOne({ email: 'raj80133@gmail.com' });
+
+        if (!admin3Exists) {
+            // Create the second admin
+            const admin3 = new Admin({
+                name: 'Raj Kumar Pal',
+                phone: '9658965896',
+                email: 'raj80133@gmail.com',
+                password: await bcrypt.hash('Rajvigilantvision@123', 12),
+                isAdmin: true,
+            });
+
+            await admin3.save();
+            console.log('Admin 3 created successfully.');
+        } else {
+            console.log('Admin 3 already exists.');
+        }
+        const admin4Exists = await Admin.findOne({ email: 'srikantakumardash2001@gmail.com' });
+
+        if (!admin4Exists) {
+            // Create the second admin
+            const admin4 = new Admin({
+                name: 'srikanta kumar dash',
+                phone: '9658965896',
+                email: 'srikantakumardash2001@gmail.com',
+                password: await bcrypt.hash('Srikantavigilantvision@123', 12),
+                isAdmin: true,
+            });
+
+            await admin4.save();
+            console.log('Admin 4 created successfully.');
+        } else {
+            console.log('Admin 4 already exists.');
+        }
+
     } catch (error) {
         console.log(error);
         return res.status(500).json({
@@ -119,7 +154,6 @@ const adminLogin = async (req, res) => {
         });
     }
 };
-
 
 const sendOTPForPasswordResetForAdmin = async (req, res) => {
 
@@ -279,7 +313,6 @@ const verifyOTPForPasswordResetForAdmin = async (req, res) => {
     }
 };
 
-
 const resetPasswordForAdmin = async (req, res) => {
     try {
         const { email, newPassword, confirmNewPassword } = req.body;
@@ -326,6 +359,7 @@ const resetPasswordForAdmin = async (req, res) => {
         });
     }
 };
+
 //POST:Invite Employee
 const inviteEmployee = async (req, res) => {
     try {
@@ -338,7 +372,7 @@ const inviteEmployee = async (req, res) => {
 
         const { error } = validateInvitation(req.body);
         if (error) {
-            return res.status(400).json(ApiResponse(400, null, error.details[0].message));
+            return res.status(400).json(ApiResponse(400, error.details[0].message, "Error occured while adding employee"));
         }
 
         const { name, email, phone, password, position, department, startDate, type } = req.body;
@@ -488,37 +522,101 @@ const getEmployeeById = async (req, res) => {
 // Delete an employee
 const deleteEmployee = async (req, res) => {
     try {
-
-        //Requesting id from jwt token
         const adminId = req.id;
         const admin = await Admin.findById(adminId);
         if (!admin) {
-            return res.status(400).json({
-                verified: false,
-                message: 'Admin not found'
-            });
+            return res.status(400).json(ApiResponse(400, null, 'Admin not found'));
         }
 
         const employeeId = req.params.id;
-        //Find the broker and delete
+        // Find the employee and delete
         const employee = await Employee.findByIdAndDelete(employeeId);
         if (!employee) {
-            return res.status(404).json({ error: 'Employee not found' });
+            return res.status(404).json(ApiResponse(404, null, 'Employee not found'));
         }
 
-        return res.status(200).json({
-            success: true,
-            message: 'Employee deleted successfully',
-            deleteEmployee: employee
-        });
+        return res.status(200).json(
+            ApiResponse(200, { deletedEmployee: employee }, 'Employee deleted successfully')
+        );
     } catch (error) {
         console.error(error);
-        return res.status(500).json({
-            success: false,
-            message: error.message
-        });
+        return res.status(500).json(ApiResponse(500, error.message, 'Internal Server Error'));
     }
 };
+
+const updateEmployeeStatus = async (req, res) => {
+    try {
+        const adminId = req.id;
+        const admin = await Admin.findById(adminId);
+        if (!admin) {
+            return res.status(400).json(ApiResponse(400, null, 'Admin not found'));
+        }
+
+        const employeeId = req.params.id;
+        const { active } = req.body;
+
+        // Validate the active status
+        if (typeof active !== 'boolean') {
+            return res.status(400).json(ApiResponse(400, null, 'Invalid value for active. It must be a boolean.'));
+        }
+
+        // Update employee's active status
+        const employee = await Employee.findByIdAndUpdate(
+            employeeId,
+            { active },
+            { new: true, runValidators: true }
+        );
+
+        if (!employee) {
+            return res.status(404).json(ApiResponse(404, null, 'Employee not found'));
+        }
+
+        return res.status(200).json(
+            ApiResponse(200, { updatedEmployee: employee }, `Employee status updated to ${active ? 'active' : 'inactive'} successfully`)
+        );
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json(ApiResponse(500, error.message, 'Internal Server Error'));
+    }
+};
+
+const updateEmployeeDetails = async (req, res) => {
+    try {
+        const adminId = req.id;
+        const admin = await Admin.findById(adminId);
+        if (!admin) {
+            return res.status(400).json(ApiResponse(400, null, 'Admin not found'));
+        }
+
+        const employeeId = req.params.id;
+        const updateFields = req.body;
+console.log(req.body)
+        // Ensure that sensitive fields are not updated directly
+        const restrictedFields = ['password', '_id', 'createdAt', 'updatedAt'];
+        restrictedFields.forEach(field => delete updateFields[field]);
+
+        // Update employee details
+        const updatedEmployee = await Employee.findByIdAndUpdate(
+            employeeId,
+            updateFields,
+            { new: true, runValidators: true } // `new` returns updated document, `runValidators` ensures schema validation
+        );
+
+        if (!updatedEmployee) {
+            return res.status(404).json(ApiResponse(404, null, 'Employee not found'));
+        }
+
+        return res.status(200).json(
+            ApiResponse(200, { updatedEmployee }, 'Employee details updated successfully')
+        );
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json(ApiResponse(500, error.message, 'Internal Server Error'));
+    }
+};
+
+
+
 
 //Search employee
 const searchEmployee = async (req, res) => {
@@ -612,7 +710,6 @@ const projectassign = async (req, res) => {
         res.status(500).json(ApiResponse(500, error.message, 'Internal server error.'));
     }
 };
-
 
 //Add employee to project
 const updateProject = async (req, res) => {
@@ -1555,6 +1652,9 @@ module.exports = {
     deleteDocument,
     getAllEmployeesList,
     getStatistics,
-    getEmployeeWorkSessions
+    getEmployeeWorkSessions,
+    updateEmployeeStatus,
+    updateEmployeeDetails
 };
+
 
